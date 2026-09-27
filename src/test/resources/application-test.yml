@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/stock_ledger_test}
+    username: ${TEST_DB_USERNAME:stock_ledger}
+    password: ${TEST_DB_PASSWORD:stock_ledger}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  sql:
+    init:
+      mode: never
+
+logging:
+  level:
+    root: WARN
+    com.example.stockledger: WARN
+    org.hibernate: WARN

@@ -1,0 +1,242 @@
+STOCK LEDGER API - SAMPLE REQUESTS
+=================================
+
+Base URL: http://localhost:8080/api/v1
+
+- POST /seed creates sample items, warehouses, and stock
+
+
+1. SEED SAMPLE DATA
+===================
+POST /api/v1/seed
+No request body.
+Creates/fetches these records:
+  Items: WIDGET-A (PIECES), STEEL-COIL (KG)
+  Warehouses: MAIN, NORTH
+  Stock: WIDGET-A in MAIN (two arrivals: 100 @ 10.00 and 100 @ 12.00)
+         STEEL-COIL in MAIN (500 @ 3.50)
+
+Look up generated IDs:
+GET /api/v1/items
+GET /api/v1/warehouses
+
+For requests below, set:
+  {WIDGET_ID} = ID for WIDGET-A
+  {STEEL_ID} = ID for STEEL-COIL
+  {MAIN_ID} = ID for MAIN
+  {NORTH_ID} = ID for NORTH
+
+
+2. ITEMS SERVICE
+================
+Create an item:
+POST /api/v1/items
+{
+  "code": "DEMO-BOLT",
+  "name": "Demo Bolt",
+  "unit": "PIECES"
+}
+
+List items:
+GET /api/v1/items
+
+Disable an item (run at the end; replace ID):
+PATCH /api/v1/items/{ITEM_ID}/disable
+No request body.
+
+Valid units: PIECES, KG, LITRES
+
+
+3. WAREHOUSE SERVICE
+====================
+
+Create a warehouse:
+POST /api/v1/warehouses
+{
+  "code": "DEMO-WH",
+  "name": "Demo Warehouse"
+}
+
+List warehouses:
+GET /api/v1/warehouses
+
+Disable a warehouse (run at the end; replace ID):
+PATCH /api/v1/warehouses/{WAREHOUSE_ID}/disable
+No request body.
+
+
+4. MOVEMENT SERVICE
+===================
+
+Record an arrival (IN):
+POST /api/v1/movements/in
+{
+  "itemId": {WIDGET_ID},
+  "warehouseId": {MAIN_ID},
+  "quantity": 25,
+  "unitCost": 11.50,
+  "occurredAt": "2026-09-28T09:00:00Z",
+  "reason": "Demo purchase receipt",
+  "recordedBy": "demo-user"
+}
+
+Record an issue (OUT). Save the returned movement ID as {OUT_MOVEMENT_ID}:
+POST /api/v1/movements/out
+{
+  "itemId": {WIDGET_ID},
+  "warehouseId": {MAIN_ID},
+  "quantity": 30,
+  "occurredAt": "2026-09-28T10:00:00Z",
+  "reason": "Demo customer order",
+  "recordedBy": "demo-user"
+}
+
+Check FIFO cost for that issue:
+GET /api/v1/movements/{OUT_MOVEMENT_ID}/cost
+
+Transfer stock from MAIN to NORTH:
+POST /api/v1/movements/transfer
+{
+  "itemId": {WIDGET_ID},
+  "sourceWarehouseId": {MAIN_ID},
+  "destinationWarehouseId": {NORTH_ID},
+  "quantity": 10,
+  "occurredAt": "2026-09-28T11:00:00Z",
+  "reason": "Demo warehouse transfer",
+  "recordedBy": "demo-user"
+}
+
+List all movements:
+GET /api/v1/movements?page=0&size=20
+
+List movements for one item:
+GET /api/v1/movements?itemId={WIDGET_ID}&page=0&size=20
+
+Cancel the OUT movement (run once; this restores the 30 issued units):
+POST /api/v1/movements/{OUT_MOVEMENT_ID}/cancel
+{
+  "reason": "Demo cancellation",
+  "recordedBy": "demo-user"
+}
+
+
+5. STOCK SERVICE
+================
+
+Current stock in MAIN:
+GET /api/v1/stock/current?itemId={WIDGET_ID}&warehouseId={MAIN_ID}
+
+Current stock in NORTH:
+GET /api/v1/stock/current?itemId={WIDGET_ID}&warehouseId={NORTH_ID}
+
+Historical stock at a timestamp:
+GET /api/v1/stock/historical?itemId={WIDGET_ID}&warehouseId={MAIN_ID}&at=2026-09-28T10:30:00Z
+
+Use an ISO-8601 timestamp with a timezone, such as the Z timestamps above.
+
+
+6. DOCUMENT SERVICE
+===================
+
+Create a multi-line dispatch document. Ensure MAIN has enough stock first.
+
+POST /api/v1/documents
+{
+  "documentType": "DISPATCH_NOTE",
+  "referenceNo": "DISPATCH-DEMO-001",
+  "occurredAt": "2026-09-28T12:00:00Z",
+  "recordedBy": "demo-user",
+  "lines": [
+    {
+      "itemId": {WIDGET_ID},
+      "warehouseId": {MAIN_ID},
+      "kind": "OUT",
+      "quantity": 5,
+      "reason": "Demo dispatch widgets"
+    },
+    {
+      "itemId": {STEEL_ID},
+      "warehouseId": {MAIN_ID},
+      "kind": "OUT",
+      "quantity": 2,
+      "reason": "Demo dispatch steel"
+    }
+  ]
+}
+
+Document type values: DELIVERY_NOTE, DISPATCH_NOTE, TRANSFER_NOTE.
+Document lines support IN and OUT. Use /movements/transfer for transfers.
+For an IN document line, include "unitCost": 9.25.
+
+
+7. STOCK COUNT SERVICE
+======================
+Start a count. Save the response ID as {COUNT_ID}:
+POST /api/v1/stock-counts/start
+{
+  "itemId": {WIDGET_ID},
+  "warehouseId": {MAIN_ID}
+}
+
+Read the count:
+GET /api/v1/stock-counts/{COUNT_ID}
+
+Before completing, read current stock and use the observed quantity as
+countedQuantity to avoid creating a stock adjustment. For example:
+POST /api/v1/stock-counts/{COUNT_ID}/complete
+{
+  "countedQuantity": 280,
+  "recordedBy": "demo-counter"
+}
+
+The example quantity is illustrative only. Use the actual current quantity
+shown by GET /api/v1/stock/current for the selected item and warehouse.
+
+8. RESERVATION SERVICE
+======================
+
+Create a reservation. Save the response ID as {RESERVATION_ID}:
+POST /api/v1/reservations
+{
+  "itemId": {WIDGET_ID},
+  "warehouseId": {MAIN_ID},
+  "quantity": 5,
+  "referenceNo": "ORDER-DEMO-001"
+}
+
+Choose ONE of the following actions for this pending reservation.
+
+Release it (returns reserved quantity to availability):
+POST /api/v1/reservations/{RESERVATION_ID}/release
+No request body.
+
+OR fulfill it (creates an OUT movement):
+POST /api/v1/reservations/{RESERVATION_ID}/fulfill?recordedBy=demo-user
+No request body.
+
+
+ENDPOINT CHECKLIST
+==================
+
+POST   /api/v1/seed
+POST   /api/v1/items
+GET    /api/v1/items
+PATCH  /api/v1/items/{id}/disable
+POST   /api/v1/warehouses
+GET    /api/v1/warehouses
+PATCH  /api/v1/warehouses/{id}/disable
+POST   /api/v1/movements/in
+POST   /api/v1/movements/out
+POST   /api/v1/movements/transfer
+POST   /api/v1/movements/{id}/cancel
+GET    /api/v1/movements
+GET    /api/v1/movements/{id}/cost
+GET    /api/v1/stock/current
+GET    /api/v1/stock/historical
+POST   /api/v1/documents
+POST   /api/v1/stock-counts/start
+GET    /api/v1/stock-counts/{id}
+POST   /api/v1/stock-counts/{id}/complete
+POST   /api/v1/reservations
+POST   /api/v1/reservations/{id}/release
+POST   /api/v1/reservations/{id}/fulfill
